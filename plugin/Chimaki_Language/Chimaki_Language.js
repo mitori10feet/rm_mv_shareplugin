@@ -9,14 +9,11 @@
  * @param opctionString
  * @desc opction 顯示名稱調整
  * @default Always Dash;Command Remember;BGM Volume;BGS Volume;ME Volume;SE Volume;Language
- *  
- * @param setlan
- * @desc 設定顯示哪些語言  繁體 / 簡體 / 日文 / 英文 0 = 關閉 , 1 = 開啟(分號隔開, 繁體必須是1)
- * @default 1;0;0;1
  * 
- * @param saveLangVaribales
- * @desc 儲存目前語言參數到變數
- * @default 41 
+ * 
+ * @param language
+ * @desc 使用哪幾種語言, 使用分號隔開, 至少要有一種, 不然會爆炸, 這邊的名稱請與表格欄位的名稱相同
+ * @default 繁體中文;English
  * 
  * @help 作者網站 Maker 製造機 http://www.chimakier.com
  *  本插件可以免費使用, 禁止二次發佈 , 如果使用後可以在遊戲中附上 來源網址 Maker 製造機 www.chimakier.com的話 ,粽子會非常感謝你的
@@ -39,9 +36,6 @@
  *  在事件中的顯示選項中, 輸入 \Say[文本ID]即可
  *  
  *  備註: 文本中支援特殊語法 ex \v[1] 也可以使用, 若想換行直接在文本換行即可
- *  @@@ 變數相關 @@@
- *  變數為0 時, 為繁體中文
- *  假設只開啟中文跟英文, 那變數1就是英文,  假設開啟四種語言 , 英文會是變數3 (語言變數直 = 總共開啟的語言數量 - 1 )
  *  
 */
 
@@ -62,34 +56,18 @@ chimaki_lan.plugin.path._getJSName          = document.currentScript.src.substri
 
 
 chimaki_lan.plugin = PluginManager.parameters( chimaki_lan.plugin.path._getJSName );
+var opctionStrings  = chimaki_lan.plugin["opctionString"].split(";");
+var languageType  = chimaki_lan.plugin["language"].split(";");
 
-var setlan = chimaki_lan.plugin["setlan"].split(";") ;
-var lang_arr = new Array();
-for (var i = 0; i < setlan.length ; i++){
-	if (setlan[i] == 0) continue;
-	var str;
-	if (i == 0) str = '繁體中文';
-	if (i == 1) str = '简体中文';
-	if (i == 2) str = '日本語';
-	if (i == 3) str = 'English';
-	lang_arr.push(str);	
-}
 
 ConfigManager.language   = ConfigManager.language || 0;
-var save_lan_var = Math.floor( chimaki_lan.plugin['saveLangVaribales']);
-
-function log(str){
-	console.log(str);
-}
 
 (function (){
 	
-	chimaki_lan.plugin.languageConfig = lang_arr;
-	log(chimaki_lan.plugin.languageConfig);
-	let opctionStrings  = chimaki_lan.plugin["opctionString"].split(";");
+	
 
-	// $gameVariables.setValue(save_lan_var, ConfigManager.language || 0);
 
+	chimaki_lan.plugin.languageConfig = languageType;
 
 	chimaki_lan.plugin.pluginCommand = Game_Interpreter.prototype.pluginCommand;
 	Game_Interpreter.prototype.pluginCommand = function(command, args) {
@@ -167,14 +145,15 @@ function log(str){
 		this.language = this.readVolume(config, 'language');
 	}
 	Window_Options.prototype.addGeneralOptions = function() {
-		this.addCommand(opctionStrings[5] , 'language');		
+		this.addCommand(opctionStrings[6] , 'language');		
 	    this.addCommand(opctionStrings[0], 'alwaysDash');
+	    this.addCommand(opctionStrings[1], 'commandRemember');
 	};
 	Window_Options.prototype.addVolumeOptions = function() {
-	    this.addCommand( opctionStrings[1], 'bgmVolume');
-	    this.addCommand( opctionStrings[2], 'bgsVolume');
-	    this.addCommand( opctionStrings[3], 'meVolume');
-	    this.addCommand( opctionStrings[4], 'seVolume');
+	    this.addCommand( opctionStrings[2], 'bgmVolume');
+	    this.addCommand( opctionStrings[3], 'bgsVolume');
+	    this.addCommand( opctionStrings[4], 'meVolume');
+	    this.addCommand( opctionStrings[5], 'seVolume');
 	};	
 
 	Window_Options.prototype.statusText = function(index) {
@@ -212,19 +191,14 @@ function log(str){
 	    	let config = chimaki_lan.plugin.languageConfig;
 	    	if (value > config.length - 1){
 	    		value = 0;
-	    	}
-	    	this.setLanVarValue(value);
 
+	    	}
 	    	this.changeValue(symbol, value);
 
 	    } else {
 	        this.changeValue(symbol, !value);
 	    }
 	};
-	Window_Options.prototype.setLanVarValue = function (value){
-		$gameVariables.setValue(save_lan_var, value);	
-	}
-	
 	Window_Options.prototype.langOffset = function (){
 		return 1;
 	}
@@ -238,11 +212,11 @@ function log(str){
 	        this.changeValue(symbol, value);
 	    } else if (this.isLanguageSymbol(symbol)){
 	    	value--;
-	    	let config = chimaki_lan.plugin.languageConfig;
-	    	if (value < 0){
-	    		value = config.length - 1;
+	    	
+	    	if (value < 0 ){
+	    		value = languageType.length - 1;
+
 	    	}
-	    	this.setLanVarValue(value);
 	    	this.changeValue(symbol, value);
 	    } else {
 	        this.changeValue(symbol, false);
@@ -258,11 +232,12 @@ function log(str){
 	        this.changeValue(symbol, value);
 	    } else if (this.isLanguageSymbol(symbol)){
 	    	value++;
-	    	let config = chimaki_lan.plugin.languageConfig;
-	    	if (value > config.length - 1){
+	    	if (value > languageType.length - 1){
 	    		value = 0;
+
 	    	}
-	    	this.setLanVarValue(value);
+
+	    	value = value.clamp(0, languageType.length);
 	    	this.changeValue(symbol, value);	    		        
 	    } else {
 	        this.changeValue(symbol, true);
@@ -304,27 +279,28 @@ function log(str){
 function TextContentManager () {
 	throw new Error('This is a static class');
 }
-TextContentManager._allData = {'zh' : {} , 'ja' : {}, 'en' : {} ,'cn' :{}};
+
+TextContentManager._allData = [];
+for (let i = 0; i < languageType.length; i++){
+	TextContentManager._allData[languageType[i]] = {};
+
+}
+
+
 TextContentManager._nowlanguage = 'zh'; 
+TextContentManager._nowlanguageIndex = 0; 
 TextContentManager.setContentData = function ( text ){
-	switch (text){
-		case "繁體中文":
-			this._nowlanguage = 'zh';
-			break;
-		case "日本語":
-			this._nowlanguage = 'ja';
-			break;
-		case "简体中文":
-			this._nowlanguage = 'cn';
-			break;
-		case "English":
-			this._nowlanguage = 'en';
-			break;
+	for (let i = 0 ; i < languageType.length; i++){
+		if (text == languageType[i]) {
+			this._nowlanguageIndex = i;
+		}
 	}
+
+
 }
 TextContentManager.getContentDataByRang = function ( st, ed ){
 	var text = '';
-	var data = this._allData[this._nowlanguage];
+	var data = this._allData[this._nowlanguageIndex];
 	for (var i in data){
 		if (i >= st && i <= ed){			
 			text += data[i] + '\n';
@@ -333,19 +309,19 @@ TextContentManager.getContentDataByRang = function ( st, ed ){
 	return text;
 }
 TextContentManager.getContentDataById = function ( id ){
-	return this._allData[this._nowlanguage][id];
+	console.log('now index ' + this._nowlanguageIndex);
+	console.log(this._allData);
+	return this._allData[languageType[this._nowlanguageIndex]][id];
 }
-
-
 TextContentManager.setlanguage = function (language){
 	this._nowlanguage = language + '';
 }
 TextContentManager.setAllData = function (data){
-	for (var i = 0;i < data.length ; i ++){
-		this._allData['zh'][data[i]['編號']] = data[i]['zh'] ;
-		this._allData['ja'][data[i]['編號']] = data[i]['ja'] ;
-		this._allData['en'][data[i]['編號']] = data[i]['en'] ;
-	 	this._allData['cn'][data[i]['編號']] = data[i]['cn'] ;
+	for (var i in data){
+		for (let j in languageType){
+			let str = languageType[j];
+			this._allData[str][ ''+data[i]['編號']+ ''] = data[i][str] ;			
+		}
 	}
 }
 
