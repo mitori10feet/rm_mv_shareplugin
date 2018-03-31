@@ -17,6 +17,7 @@
 *
 * XX奖励 :
 * 装备此engine 的 角色 备注栏中 加上<tankType: XX> 即可生效 EX: 角色A 备注栏 <tankType:履带> , engine 备注栏 <履带奖励:500>, 则触发 maxhp+500
+* tank多個特性 <tankType1: ....> <tankType2:....>
 *
 * 辅助奖励 : 装备2个 engine + 只有一个engine 是 辅助奖励 时生效
 *
@@ -46,11 +47,13 @@ chimaki_plugin.engie.args = PluginManager.parameters( chimaki_plugin.engie._getJ
 // override
 Window_ItemHelp.prototype.setItem = function(item,force){
     this.contents.clear();
-    if (item && item.description){
+    if (item && item.description && item.atypeId == Fux2.E31_Core.engineArmorTypeId){
+        let i = $dataArmors[item.baseItemId];
+        item.description = i.description;
         let desc = item.description;
         if (desc.match(/[\J]/)){
             if (EngieManager.isActiveByItem(item)){
-                item.description = desc.replace(/[\J]/, 'C[3]');
+                item.description = i.description.replace(/[\J]/, 'C[3]');
             }
         }        
     }
@@ -70,8 +73,9 @@ Window_Base.prototype.convertEscapeCharacters = function(text) {
 chimaki_plugin.alias.param = Game_BattlerBase.prototype.param;
 Game_BattlerBase.prototype.param = function(paramId) {
     let value = chimaki_plugin.alias.param.call(this, paramId)
-    if (paramId == 0){
-        value += EngieManager.getEnigeData(this.equips(), this); 
+    if (paramId == 0 && !(this instanceof Game_Enemy)){
+        log(this);
+        value += EngieManager.getEnigeData( this.equips(), this); 
         var maxValue = this.paramMax(paramId);
         var minValue = this.paramMin(paramId);
         return Math.round(value.clamp(minValue, maxValue));            
@@ -80,6 +84,12 @@ Game_BattlerBase.prototype.param = function(paramId) {
 };
 
 
+Game_Tank.prototype.isDoubleEngine = function() {
+    var slots = this.equipSlots().filter(function(slot){
+        return slot.etypeId >1 && slot.stypeId == Fux2.E31_Core.engineArmorTypeId;
+    });
+    return slots.length >= 2;
+};
 
 //doing
 class EngieManager {
@@ -98,7 +108,7 @@ class EngieManager {
         for (let i in this._active_list ){
             let actor = this._active_list[i];
             if ((actor.main.item_id == id && actor.main.active) || 
-                (actor.sub.item_id == item.id && actor.sub.active) )
+                (actor.sub.item_id == id && actor.sub.active) )
             {
                 active = true;
             }
@@ -109,7 +119,7 @@ class EngieManager {
     static isActive (item, actor){
 
         if (!item.meta ) return false;            
-        item.description = item.description;
+
         let equips = actor.equips();
 
         let id = actor._actorId;
@@ -126,30 +136,45 @@ class EngieManager {
         if ( (actorObj.main.item_id == item.id && actorObj.main.active ) ||
               (actorObj.sub.item_id == item.id && actorObj.sub.active ) )
         {
+            log("111111")
             flag = 1;
         }           
         return flag;
     }
     static getEnigeData ( equips, actor ){
-        if (!actor ) return;
+        if (!actor  ) return;
         this._equips = [];
         this._active = [];
-        this._actorActive = { id : null , main : { active : false , item_id : 0} , sub : { active : false , item_id : 0} };
+        this._actorActive = { id : null , main : { active : false , item_id : 0, value : 0} , sub : { active : false , item_id : 0 , value : 0} };
         this._active_list = this._active_list || [];
         this._actorActive.id = actor._actorId;
+
+
 
         $aid = actor._actorId;
         this._actor = actor ?  $dataActors[actor._actorId]: {};
 
+        // 全部格子
+        let slots = actor.equipSlots();
 
-        for (let i = 0; i < equips.length ; i ++){
-            if (equips[i]){
+        // 現在裝備道具狀況
+        let eq2 = actor._equips;
+
+        //  原生物件, 玩家所裝備的道具 data item 的資料
+        for (let i = 0 ; i < slots.length ; i ++){
+            let slot = slots[i];
+            // 格子符合
+            if (slot.etypeId > 1 && slot.stypeId == Fux2.E31_Core.engineArmorTypeId){
                 let item = equips[i];
-                for (let j in item.meta){
-                    if (j && j.match(/[单子奖励]|[双子奖励]|[奖励]|[辅助奖励]|[推动奖励]|[无双奖励]/)){
-                        this._equips.push(item);
-                    };
-                }                    
+                this._equips.push(item ? item : null);
+            }
+        }
+
+        
+
+        for (let i = 0 ; i < this._equips.length; i ++){
+            if (!this._equips[i]){
+                this._equips[i] = { meta : "NODATA" };
             }
         }
         return Number( this.checkEngiePlus(this._equips) ) || 0;
@@ -162,12 +187,18 @@ class EngieManager {
     }
     static checkEngiePlus( equips ){
         let value = 0;
+
+
+
         for (let i = 0 ; i < equips.length; i++){
             let item = equips[i];
             let v = false;
-            if (item.meta['单子奖励']){
-                v = this.checkSinglePlus(equips, item.meta['单子奖励']);
-                value = this.setValue(v, value);                    
+            if (item.meta == "NODATA"){
+                v = false;
+            }
+            else if (item.meta['单子奖励']){
+                v = this.checkSinglePlus(equips, item.meta['单子奖励'], item);
+                value = this.setValue(v, value);       
             }
             else if (item.meta['双子奖励']){
                 v = this.checkDoublePlus(equips);
@@ -183,18 +214,19 @@ class EngieManager {
                 value = this.setValue(v, value);                         
             }
             else if (item.meta['无双奖励']){
-                v = this.checkMusoPlus(i ,item.meta['无双奖励']);
+                v = this.checkMusoPlus(i ,item.meta['无双奖励'] ,equips.length );
                 value = this.setValue(v, value);                                                                 
-            }                                                           
+            }
             else {
                 v = this.checkTypePlus(equips ,item, this._actor)
                 value = this.setValue(v, value);
             }   
-            let hash = ( i == 0 ) ? 'main' : 'sub';
+            let hash = ( i == 0) ? 'main' : 'sub';
 
 
             this._actorActive[hash].active = (v === false) ? false : true;
             this._actorActive[hash].item_id = item.id;
+            this._actorActive[hash].value = (v === false) ? 0 : value;
         }
 
         let actorFlag = 0;
@@ -214,30 +246,31 @@ class EngieManager {
             this._active_list[actorIndex] = this._actorActive;
         }
 
-
+        log('最後加乘數值 :: ' + value);
         return value;
     };  
     // index = 0 main engine index = 1 sub engine 
-    static checkMusoPlus (index , value , equips){
-        if (index >= 1) return false;
+    static checkMusoPlus (index , value , equips, len){
+        if (index == 1) return false;
         log('觸發無雙');
         return value;
 
     }
-    
+    // doing
     static checkBoostPlus (index, value, equips){
         // 只裝備一個絕對不會生效
-        if (equips.length == 1 ) return false;
 
         let bootCount = 0; 
         let engineCount = 0;
-        let lastValue = 0;
         let baseItem;
 
-
+        // 推動獎勵
         for (let i = 0 ; i < equips.length; i++){
             let item = equips[i];
             let meta = item.meta;
+            if (item && item.id){
+                engineCount++
+            }
             for (let j in meta){
                 if (j == '推动奖励'){
                     bootCount++;
@@ -248,75 +281,54 @@ class EngieManager {
 
         // 取得另外一個裝備資料
         for (let i = 0 ; i < equips.length; i++){
-            if (i != index){
+            if (i != index ){
                 baseItem = equips[i];
                 break;
             }
         }
 
+        if (!baseItem) return false;
 
-        let rateValue = 0;
-        let rate_flag = 0;
-        if (value.match(/[%]/)){
-            rate_flag = 1;
-            rateValue = this.getRateValue(value.replace('%',''), baseItem);
-            log('rateValue ::' + rateValue);
+        if (value.match(/[%]/) && baseItem && baseItem.id){
+            value = Number(this.getRateValue(value.replace('%',''), baseItem) );
+            log('rateValue ::' + value);
         }
+
+        // 雙推動, 如果在main 則無效
+        if (bootCount >= 2 && index == 0) return false;
+        // 根據不同情況決定要用哪個數值
 
         // 雙推動時, 只有 sub engine 有效果, 如果是% 的話, 倍率算成%的
-        if (bootCount >= 2 ){
-            log('雙推動');
-            if (rate_flag){
-                log('趴')
-                lastValue = (index == 0 ) ? 0 : Number(rateValue);
-
-            }
-            else {
-               lastValue = (index == 0 ) ? 0 : Number(value);
-            }
-        }                     
-        else {
-            if (rate_flag){
-                lastValue = Number(rateValue);
-            }
-            else {
-                lastValue = Number(value);        
-            }
-            log('單推動 +' + lastValue);
-            
-        }
-
-        
-
-        return lastValue == 0 ? false : lastValue;
-
-
+        return value;
     }
 
     static getRateValue(value , baseItem){
         let id = baseItem.baseItemId;
-
-        let base_value = $dataArmors[id].params[0];
-        let last_value = Math.floor(base_value * (1 + (value / 100) ) );
+        let base_value = Number($dataArmors[id].params[0] );
+        let last_value = Math.floor( (base_value * (Number(value) / 100)));
+        
         // log('getRateValue base value :' + base_value + ', last_value :' + last_value + ', rate :' + value)
-        return last_value;
+        return Number(last_value );
     }
 
     /* 兩個輔助則失效, 一個輔助 + 主引擎 則生效*/
     static checkSupPlus (value, equips){
         let count = 0;
         let engineCount = 0;
-        equips.forEach(function ( item ){
+        for (let i = 0; i < equips.length; i ++){
+            let item = equips[i];
             let meta = item.meta;
-            engineCount++;
-            for (let i in meta){
-                if (i.match('辅助奖励')){
-                    count++;
-                }
+            if (item &&item.id){
+                engineCount++;
+                for (let i in meta){
+                    if (i.match('辅助奖励')){
+                        count++;
+                    }
+                }                                
             }
-        })
+        }
 
-        if (count >= 2 || equips.length <= 1) return false;
+        if (count >= 2 || engineCount < 2) return false;
 
 
         if (value > 0){
@@ -330,15 +342,18 @@ class EngieManager {
 
         let meta = item.meta;
         let value = 0;
+        let count = 0;
         for (let i in meta){
-            let type_text = i.replace('奖励','');
+            let str = { meta : i};
+            let type_text = str.meta.replace('奖励','');
             let v = this.matchActorType(actor, type_text);
             if (v != false ){
-                value += Number(v);
+                count++
+                log('觸發 :' + count + ' 次');
+                value += Number( eval (item.meta[i] ));
+
             }
-            else {
-                value = false;
-            }
+
         }
         if (value > 0){
             log('觸發ＸＸ類型');
@@ -348,34 +363,40 @@ class EngieManager {
     }         
     static matchActorType ( actor , type){
         let meta = actor.meta;
-        let flag = 0;
+        let flag = false;
         for (let i in meta){
-            if (type == meta[i]){
+            if (type == meta[i] && i.match(/[tankType]/) ){
                 flag = true;
+                break;
             }
         }
+
         return flag;
     }
 
 
 
 
-    static checkSinglePlus (equips, plus){
-        if (!equips.length > 1){
-            log('觸發單子')
+    static checkSinglePlus (equips, plus, item){
+        let count = 0;
+        for (let i in equips){
+            let item = equips[i];
+            if (item && item.id ){
+                count++;  
+            } 
         }
 
-        return equips.length > 1 ? false : plus;
+        return count == 1 ?  plus : false;
     }     
     static checkDoublePlus (equips){
-        if (equips.length < 2) return 0;
+        if (equips.length < 2) return false;
 
         let count = 0;
         let plus = 0;
         for (let i in equips){
             let item = equips[i];
             if (item && item.meta['双子奖励']){
-                plus += item.meta['双子奖励'];
+                plus = Number( item.meta['双子奖励'] );
                 count++;
             }
         }
@@ -384,12 +405,36 @@ class EngieManager {
         }
         return count >= 2 ? plus : false;
     }    
+
+    static getEnigePlusById ( id ){
+        let obj;
+        let total = 0;
+        for (let i in this._active_list){
+            let actor = this._active_list[i];
+            if (actor.id == id ){
+                obj = actor;
+                break;
+            }
+        }
+
+        if (obj){
+            total += obj.main.active ? obj.main.value : 0;
+            total += obj.sub.active ? obj.sub.value : 0;
+// this._actorActive = { id : null , main : { active : false , item_id : 0, value : 0} , sub : { active : false , item_id : 0 , value : 0} };
+
+        }
+
+        return total;
+        
+
+    }
 }
 
 
 
 function log (str, obj){
-    // if ($aid != 30) return;
+    return;
+    if ($aid != 30) return;
     if (obj){
         console.log(str, obj);    
     }
